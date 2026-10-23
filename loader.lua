@@ -3,19 +3,19 @@ local SCRIPTS = {
     [537413528] = { -- Build A Boat For Treasure
         Name = "BoatHelper",
         URL = "https://raw.githubusercontent.com/matvejfistunov-lgtm/boathelperv1/refs/heads/main/boathelper.luau",
-        -- Просто меняем текст в скрипте на лету
         Replacements = {
             ['SubTitle = "Ironclad"'] = 'SubTitle = "by BetterFly"',
             ['Title = "BoatHelper"'] = 'Title = "BoatHelper | by BetterFly"'
         }
     },
-    [6516141723] = { -- DOORS
+    [6839171747] = { -- Тот самый DOORS, который ты нашел (6839171747)
         Name = "DoorsHelper",
         URL = "https://raw.githubusercontent.com/therealcookiemonsterof1966/AbysallContinued/main/Games/Doors/Main.luau",
         Replacements = {
             ["Abysall Hub"] = "Doors Helper",
             ["Abysall Continued"] = "Doors Helper",
             ["Abyss"] = "Doors Helper",
+            ["Made by"] = "Created by",
             ["by therealcookiemonsterof1966"] = "by BetterFly",
             ["therealcookiemonsterof1966"] = "BetterFly"
         }
@@ -53,18 +53,20 @@ end
 local placeId = game.PlaceId
 local scriptInfo = SCRIPTS[placeId]
 
-if not scriptInfo then return end
+if not scriptInfo then 
+    warn("[Loader] Для этого PlaceId (" .. tostring(placeId) .. ") скрипт не найден.")
+    return 
+end
 
--- 1. Скачиваем оригинальный код
 local rawCode = fetchScript(scriptInfo.URL, scriptInfo.Name)
 if not rawCode then return end
 
--- 2. Делаем замены (ставим подпись BetterFly)
+-- Заменяем названия на "by BetterFly"
 for oldText, newText in pairs(scriptInfo.Replacements) do
     rawCode = string.gsub(rawCode, oldText, newText)
 end
 
--- 3. Запускаем без всяких защит
+-- Запускаем
 local success, err = pcall(function()
     local fn = loadstring(rawCode)
     if fn then
