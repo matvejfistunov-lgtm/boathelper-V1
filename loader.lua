@@ -1,4 +1,4 @@
--- ===================== ВИЗУАЛЬНЫЙ ЛОГГЕР (GUI) =====================
+-- ===================== ВИЗУАЛЬНЫЙ ЛОГГЕР + МОНИТОР =====================
 local function createLogger()
     local sg = Instance.new("ScreenGui")
     sg.Name = "BetterFly_Logger"
@@ -7,8 +7,8 @@ local function createLogger()
     if not sg.Parent then sg.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui") end
 
     local main = Instance.new("Frame")
-    main.Size = UDim2.new(0, 550, 0, 250)
-    main.Position = UDim2.new(0.5, -275, 0.5, -125)
+    main.Size = UDim2.new(0, 600, 0, 350)
+    main.Position = UDim2.new(0.5, -300, 0.5, -175)
     main.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     main.BorderSizePixel = 0
     main.Active = true
@@ -18,7 +18,7 @@ local function createLogger()
     local title = Instance.new("TextLabel")
     title.Size = UDim2.new(1, 0, 0, 30)
     title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    title.Text = "Loader | by BetterFly"
+    title.Text = "Loader Monitor | by BetterFly"
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Font = Enum.Font.GothamBold
     title.Parent = main
@@ -34,7 +34,7 @@ local function createLogger()
     close.MouseButton1Click:Connect(function() sg:Destroy() end)
 
     local scroll = Instance.new("ScrollingFrame")
-    scroll.Size = UDim2.new(1, -10, 1, -40)
+    scroll.Size = UDim2.new(1, -10, 1, -80) -- Оставили место для кнопки снизу
     scroll.Position = UDim2.new(0, 5, 0, 35)
     scroll.BackgroundTransparency = 1
     scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
@@ -45,10 +45,29 @@ local function createLogger()
     layout.Padding = UDim.new(0, 2)
     layout.Parent = scroll
 
-    return scroll, sg
+    -- Поле для ввода ссылки и кнопка запуска
+    local textBox = Instance.new("TextBox")
+    textBox.Size = UDim2.new(1, -100, 0, 30)
+    textBox.Position = UDim2.new(0, 5, 1, -35)
+    textBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    textBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    textBox.PlaceholderText = "Вставь Raw-ссылку на любой скрипт для теста..."
+    textBox.Text = ""
+    textBox.Parent = main
+
+    local runBtn = Instance.new("TextButton")
+    runBtn.Size = UDim2.new(0, 85, 0, 30)
+    runBtn.Position = UDim2.new(1, -90, 1, -35)
+    runBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
+    runBtn.Text = "Запустить"
+    runBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    runBtn.Font = Enum.Font.GothamBold
+    runBtn.Parent = main
+
+    return scroll, sg, textBox, runBtn
 end
 
-local logScroll, logGui = createLogger()
+local logScroll, logGui, urlBox, runButton = createLogger()
 
 local function addLog(text, color)
     local label = Instance.new("TextLabel")
@@ -62,25 +81,80 @@ local function addLog(text, color)
     label.Font = Enum.Font.Code
     label.TextSize = 14
     label.Parent = logScroll
+    -- Прокрутка вниз
+    task.defer(function() logScroll.CanvasPosition = Vector2.new(0, logScroll.AbsoluteCanvasSize.Y) end)
 end
 
-local function guiPrint(...)
-    local args = {...}
-    local str = ""
-    for i, v in ipairs(args) do str = str .. tostring(v) .. (i < #args and " " or "") end
-    addLog("[Лоадер] " .. str, Color3.fromRGB(100, 255, 100)) -- Зеленый
-end
+local function guiPrint(msg, color) addLog("[Loader] " .. tostring(msg), color or Color3.fromRGB(100, 255, 100)) end
+local function guiWarn(msg, color) addLog("[Ошибка] " .. tostring(msg), color or Color3.fromRGB(255, 100, 100)) end
 
-local function guiWarn(...)
-    local args = {...}
-    local str = ""
-    for i, v in ipairs(args) do str = str .. tostring(v) .. (i < #args and " " or "") end
-    addLog("[Ошибка] " .. str, Color3.fromRGB(255, 100, 100)) -- Красный
+-- ===================== ЯДРО ЗАПУСКА =====================
+local function runScript(code, name)
+    guiPrint("Компиляция " .. name .. "...")
+    
+    -- Перехватываем принты самого скрипта
+    local originalPrint = print
+    local originalWarn = warn
+    local originalError = error
+    
+    getgenv().print = function(...)
+        local str = ""
+        for i, v in ipairs({...}) do str = str .. tostring(v) .. (i < select("#", ...) and " " or "") end
+        addLog("[Скрипт] " .. str, Color3.fromRGB(255, 255, 200))
+        originalPrint(...)
+    end
+    
+    getgenv().warn = function(...)
+        local str = ""
+        for i, v in ipairs({...}) do str = str .. tostring(v) .. (i < select("#", ...) and " " or "") end
+        addLog("[Внимание] " .. str, Color3.fromRGB(255, 150, 50))
+        originalWarn(...)
+    end
+
+    -- Запуск с глубокой трассировкой
+    local startTime = tick()
+    local success, err = xpcall(function()
+        local fn = loadstring(code)
+        if fn then
+            task.spawn(fn)
+        else
+            error("Loadstring вернул nil (синтаксическая ошибка).")
+        end
+    end, debug.traceback)
+
+    getgenv().print = originalPrint
+    getgenv().warn = originalWarn
+    getgenv().error = originalError
+
+    local endTime = tick()
+    guiPrint(string.format("Выполнение заняло: %.2f сек.", endTime - startTime))
+
+    if not success then
+        guiWarn("КРАШ СКРИПТА:\n" .. tostring(err))
+    else
+        guiPrint("Код выполнен без критических ошибок.")
+        
+        -- Мониторинг GUI (появилось ли окно)
+        task.wait(1.5) -- Ждем, пока скрипт отрисует интерфейс
+        local count = 0
+        for _, v in ipairs(game:GetService("CoreGui"):GetChildren()) do
+            if v:IsA("ScreenGui") then count = count + 1 end
+        end
+        for _, v in ipairs(game.Players.LocalPlayer.PlayerGui:GetChildren()) do
+            if v:IsA("ScreenGui") then count = count + 1 end
+        end
+        
+        if count > 0 then
+            guiPrint("Мониторинг: Обнаружено " .. count .. " активных GUI окон.")
+        else
+            guiWarn("Мониторинг: Скрипт не создал ни одного GUI окна. Возможно, он не поддерживает эту игру.")
+        end
+    end
 end
 
 -- ===================== КОНФИГУРАЦИЯ =====================
 local SCRIPTS = {
-    [537413528] = { -- Build A Boat For Treasure
+    [537413528] = { -- BABFT
         Name = "BoatHelper",
         URL = "https://raw.githubusercontent.com/matvejfistunov-lgtm/boathelperv1/refs/heads/main/boathelper.luau",
         Replacements = {
@@ -88,114 +162,57 @@ local SCRIPTS = {
             ['Title = "BoatHelper"'] = 'Title = "BoatHelper | by BetterFly"'
         }
     },
-    [6839171747] = { -- DOORS: The Backdoor (твой ID)
+    [6839171747] = { -- DOORS Backdoor
         Name = "AbysallDoors",
-        URL = "https://raw.githubusercontent.com/therealcookiemonsterof1966/AbysallContinued/main/Games/Doors/Main.luau",
-        Replacements = {} -- Замены отключены, чтобы Abysall не сломался
+        URL = "https://raw.githubusercontent.com/therealcookiemonsterof1966/AbysallContinued/main/Games/Doors/Main.luau"
     },
 }
 
-local CACHE_FOLDER = "BetterFlyHelper"
-
--- ===================== АБУЗ ФАЙЛОВ (КЭШИРОВАНИЕ) =====================
-local function ensureFolder()
-    if makefolder and not isfolder(CACHE_FOLDER) then
-        pcall(makefolder, CACHE_FOLDER)
-    end
-end
-
 local function fetchScript(url, name)
-    ensureFolder()
-    local cacheFile = CACHE_FOLDER .. "/" .. name .. ".lua"
     guiPrint("Скачиваем " .. name .. "...")
-    
     local ok, body = pcall(function() return game:HttpGet(url) end)
     
     if ok and type(body) == "string" and #body > 100 then
-        guiPrint("Успешно скачано! Размер: " .. #body .. " байт.")
-        if writefile then pcall(writefile, cacheFile, body) end
+        guiPrint("Успешно скачано (" .. #body .. " байт).")
         return body
     end
-    
-    guiWarn("Ошибка сети! Пытаемся взять из кэша...")
-    if isfile and isfile(cacheFile) then
-        local cached = pcall(readfile, cacheFile)
-        if cached then 
-            guiPrint("Загружено из кэша.")
-            return cached 
-        end
-    end
-    guiWarn("Кэш пуст или не найден.")
+    guiWarn("Не удалось скачать код. Проверь ссылку/интернет.")
     return nil
 end
 
--- ===================== ОСНОВНАЯ ЛОГИКА =====================
+-- ===================== КНОПКА РУЧНОГО ЗАПУСКА =====================
+runButton.MouseButton1Click:Connect(function()
+    local url = urlBox.Text
+    if url == "" or not url:match("http") then
+        guiWarn("Введи корректную ссылку в поле внизу!")
+        return
+    end
+    runButton.Text = "Жди..."
+    runButton.BackgroundColor3 = Color3.fromRGB(150, 150, 50)
+    
+    local code = fetchScript(url, "CustomScript")
+    if code then
+        runScript(code, "CustomScript")
+    end
+    
+    runButton.Text = "Запустить"
+    runButton.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
+end)
+
+-- ===================== АВТО-ЗАПУСК ПО ID =====================
 local placeId = game.PlaceId
 local scriptInfo = SCRIPTS[placeId]
-local isSuccess = false
 
 if not scriptInfo then 
-    guiWarn("Для PlaceId (" .. tostring(placeId) .. ") нет скрипта в базе.")
+    guiWarn("Для ID (" .. tostring(placeId) .. ") нет авто-скрипта. Можешь запустить вручную внизу.")
 else
     local rawCode = fetchScript(scriptInfo.URL, scriptInfo.Name)
-    
     if rawCode then
         if scriptInfo.Replacements then
             for oldText, newText in pairs(scriptInfo.Replacements) do
                 rawCode = string.gsub(rawCode, oldText, newText)
             end
         end
-
-        guiPrint("Компиляция (loadstring)...")
-        
-        -- Перехватываем внутренние принты скрипта, чтобы видеть их в GUI
-        local originalPrint = print
-        local originalWarn = warn
-        
-        getgenv().print = function(...)
-            local args = {...}
-            local str = ""
-            for i, v in ipairs(args) do str = str .. tostring(v) .. (i < #args and " " or "") end
-            addLog("[Скрипт] " .. str, Color3.fromRGB(255, 255, 200)) -- Желтоватый
-            originalPrint(...)
-        end
-        
-        getgenv().warn = function(...)
-            local args = {...}
-            local str = ""
-            for i, v in ipairs(args) do str = str .. tostring(v) .. (i < #args and " " or "") end
-            addLog("[Внимание] " .. str, Color3.fromRGB(255, 150, 50)) -- Оранжевый
-            originalWarn(...)
-        end
-
-        -- Запуск
-        local success, err = pcall(function()
-            local fn = loadstring(rawCode)
-            if fn then
-                task.spawn(fn)
-            else
-                error("Ошибка компиляции (loadstring вернул nil)")
-            end
-        end)
-
-        -- Возвращаем стандартные функции обратно
-        getgenv().print = originalPrint
-        getgenv().warn = originalWarn
-
-        if not success then
-            guiWarn("КРАШ СКРИПТА: " .. tostring(err))
-        else
-            isSuccess = true
-        end
+        runScript(rawCode, scriptInfo.Name)
     end
-end
-
--- ===================== АВТО-ЗАКРЫТИЕ =====================
-if isSuccess then
-    guiPrint("Скрипт успешно запущен! Логгер закроется через 3 сек...")
-    task.delay(3, function()
-        if logGui and logGui.Parent then
-            logGui:Destroy()
-        end
-    end)
 end
