@@ -34,7 +34,7 @@ local function createLogger()
     close.MouseButton1Click:Connect(function() sg:Destroy() end)
 
     local scroll = Instance.new("ScrollingFrame")
-    scroll.Size = UDim2.new(1, -10, 1, -80) -- Оставили место для кнопки снизу
+    scroll.Size = UDim2.new(1, -10, 1, -80)
     scroll.Position = UDim2.new(0, 5, 0, 35)
     scroll.BackgroundTransparency = 1
     scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
@@ -45,7 +45,6 @@ local function createLogger()
     layout.Padding = UDim.new(0, 2)
     layout.Parent = scroll
 
-    -- Поле для ввода ссылки и кнопка запуска
     local textBox = Instance.new("TextBox")
     textBox.Size = UDim2.new(1, -100, 0, 30)
     textBox.Position = UDim2.new(0, 5, 1, -35)
@@ -81,7 +80,6 @@ local function addLog(text, color)
     label.Font = Enum.Font.Code
     label.TextSize = 14
     label.Parent = logScroll
-    -- Прокрутка вниз
     task.defer(function() logScroll.CanvasPosition = Vector2.new(0, logScroll.AbsoluteCanvasSize.Y) end)
 end
 
@@ -92,10 +90,8 @@ local function guiWarn(msg, color) addLog("[Ошибка] " .. tostring(msg), co
 local function runScript(code, name)
     guiPrint("Компиляция " .. name .. "...")
     
-    -- Перехватываем принты самого скрипта
     local originalPrint = print
     local originalWarn = warn
-    local originalError = error
     
     getgenv().print = function(...)
         local str = ""
@@ -111,11 +107,12 @@ local function runScript(code, name)
         originalWarn(...)
     end
 
-    -- Запуск с глубокой трассировкой
+    -- Запуск с глубокой трассировкой в отдельном потоке
     local startTime = tick()
     local success, err = xpcall(function()
         local fn = loadstring(code)
         if fn then
+            -- Используем task.spawn для неблокирующего выполнения
             task.spawn(fn)
         else
             error("Loadstring вернул nil (синтаксическая ошибка).")
@@ -124,7 +121,6 @@ local function runScript(code, name)
 
     getgenv().print = originalPrint
     getgenv().warn = originalWarn
-    getgenv().error = originalError
 
     local endTime = tick()
     guiPrint(string.format("Выполнение заняло: %.2f сек.", endTime - startTime))
@@ -134,8 +130,8 @@ local function runScript(code, name)
     else
         guiPrint("Код выполнен без критических ошибок.")
         
-        -- Мониторинг GUI (появилось ли окно)
-        task.wait(1.5) -- Ждем, пока скрипт отрисует интерфейс
+        -- Мониторинг GUI
+        task.wait(2) -- Даем скрипту время на инициализацию
         local count = 0
         for _, v in ipairs(game:GetService("CoreGui"):GetChildren()) do
             if v:IsA("ScreenGui") then count = count + 1 end
